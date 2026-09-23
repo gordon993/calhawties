@@ -2,20 +2,24 @@
 """Scrape a public website, following pagination automatically.
 
 Usage examples:
-  python scrape.py https://example.com/blog
-  python scrape.py "https://example.com/list?p=1" --selector ".product"
-  python scrape.py https://example.com/news --pages 1-20 --out news.json
+  python scra.py https://example.com/blog
+  python scra.py "https://example.com/list?p=1" --selector ".product"
+  python scra.py https://example.com/news --pages 1-20 --out news.json
 """
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 import time
+from datetime import datetime
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
+
+DOWNLOADS_DIR = os.path.join(os.path.expanduser("~"), "Downloads")
 
 USER_AGENT = (
     "Mozilla/5.0 (compatible; SimpleScraper/1.0; +https://example.com/bot)"
@@ -88,6 +92,14 @@ def extract(soup, url, selector):
     paragraphs = [p for p in paragraphs if p]
     links = sorted({urljoin(url, a["href"]) for a in soup.find_all("a", href=True)})
     return {"url": url, "title": title, "text": "\n\n".join(paragraphs), "links": links}
+
+
+def default_output_path(start_url, fmt):
+    """~/Downloads/scrapes/<site>_<timestamp>/output.<fmt>, created fresh each run."""
+    domain = urlparse(start_url).netloc.replace(":", "_") or "site"
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    folder = os.path.join(DOWNLOADS_DIR, "scrapes", f"{domain}_{stamp}")
+    return os.path.join(folder, f"output.{fmt}")
 
 
 def parse_page_range(spec):
@@ -164,6 +176,7 @@ def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, o
 
 
 def write_output(results, out, fmt):
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     if fmt == "json":
         with open(out, "w", encoding="utf-8") as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
@@ -195,14 +208,19 @@ def main():
     parser.add_argument("--pages", help="Explicit page range for ?p=N style pagination, e.g. 1-20")
     parser.add_argument("--max-pages", type=int, default=50, help="Safety cap on number of pages (default 50)")
     parser.add_argument("--delay", type=float, default=0.5, help="Seconds to wait between requests (default 0.5)")
-    parser.add_argument("--out", default="output.json", help="Output file path (default output.json)")
-    parser.add_argument("--format", choices=["json", "csv", "txt"], default=None, help="Output format (inferred from --out extension if omitted)")
+    parser.add_argument("--out", default=None, help="Output file path (default: a new folder under ~/Downloads/scrapes)")
+    parser.add_argument("--format", choices=["json", "csv", "txt"], default="json", help="Output format, used for the auto-generated filename (default json)")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
     args = parser.parse_args()
 
-    fmt = args.format or (args.out.rsplit(".", 1)[-1] if "." in args.out else "json")
-    if fmt not in ("json", "csv", "txt"):
-        fmt = "json"
+    if args.out:
+        fmt = args.format if args.format != "json" else (args.out.rsplit(".", 1)[-1] if "." in args.out else "json")
+        if fmt not in ("json", "csv", "txt"):
+            fmt = "json"
+        out = args.out
+    else:
+        fmt = args.format
+        out = default_output_path(args.url, fmt)
 
     page_range = parse_page_range(args.pages) if args.pages else None
 
@@ -212,13 +230,13 @@ def main():
         page_range=page_range,
         max_pages=args.max_pages,
         delay=args.delay,
-        out=args.out,
+        out=out,
         fmt=fmt,
         verbose=not args.quiet,
     )
 
     if not args.quiet:
-        print(f"Scraped {len(results)} page(s) -> {args.out}", file=sys.stderr)
+        print(f"Scraped {len(results)} page(s) -> {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

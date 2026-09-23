@@ -1,4 +1,4 @@
-# scrape.py
+# scra.py
 
 A simple, general-purpose scraper for public websites, with built-in
 pagination handling.
@@ -12,11 +12,13 @@ pip install -r requirements.txt
 ## Usage
 
 ```
-python scrape.py <url> [options]
+python scra.py <url>
 ```
 
-By default it scrapes the page's title, paragraph text, and all links,
-then follows pagination automatically until there's nothing left.
+That's it. By default it scrapes the page's title, paragraph text, and all
+links, follows pagination automatically until there's nothing left, and
+saves the result into a new folder under `~/Downloads/scrapes/` (named after
+the site and the time you ran it), so nothing gets overwritten between runs.
 
 ### Pagination modes
 
@@ -40,19 +42,19 @@ You can also force an explicit range with `--pages 1-20`.
 | `--pages 1-20` | Explicit page range for `?p=N` style pagination |
 | `--max-pages N` | Safety cap on pages fetched (default 50) |
 | `--delay SECONDS` | Delay between requests, be polite (default 0.5) |
-| `--out FILE` | Output file (default `output.json`) |
-| `--format json\|csv\|txt` | Output format (inferred from `--out` extension) |
+| `--out FILE` | Output file path, overrides the default `~/Downloads/scrapes/...` folder |
+| `--format json\|csv\|txt` | Output format (default json; inferred from `--out` extension if you set one) |
 | `--quiet` | Suppress progress logging |
 
 ### Examples
 
 ```
 # Follow "Next" links automatically, dump full text/links as JSON
-python scrape.py https://example.com/blog
+python scra.py https://example.com/blog
 
 # Explicit page-number pagination, pull only product cards, save as CSV
-python scrape.py "https://example.com/shop?p=1" --selector ".product-card" --pages 1-15 --out products.csv
+python scra.py "https://example.com/shop?p=1" --selector ".product-card" --pages 1-15 --out products.csv
 
 # Plain text dump
-python scrape.py https://example.com/articles --out articles.txt
+python scra.py https://example.com/articles --out articles.txt
 ```
