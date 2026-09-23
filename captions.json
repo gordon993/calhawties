@@ -1,0 +1,4 @@
+{
+  "_comment": "Optional caption overrides. Key = exact filename in /images, value = caption text to use instead of the auto-generated one.",
+  "Test Photo 1.jpg": "The Chosen One (test)"
+}

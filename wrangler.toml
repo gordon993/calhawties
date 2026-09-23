@@ -1,0 +1,11 @@
+name = "calhawties-bracket"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "public"
+
+# Uncomment and fill in for local `wrangler pages dev` testing against a local D1 db.
+# The Git-integration deploy on Cloudflare Pages uses the D1 binding configured in the
+# dashboard (Settings > Functions > D1 database bindings) instead of this file — see README.
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "calhawties-bracket"
+# database_id = "REPLACE_WITH_YOUR_DATABASE_ID"

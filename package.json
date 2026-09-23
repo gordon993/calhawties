@@ -1,0 +1,14 @@
+{
+  "name": "calhawties-bracket",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pick-the-winner photo tournament bracket, deployed on Cloudflare Pages.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/**/*.test.mjs"
+  },
+  "dependencies": {
+    "sharp": "^0.35.4"
+  }
+}
