@@ -96,19 +96,46 @@ def extract(soup, url, selector):
     return {"url": url, "title": title, "text": "\n\n".join(paragraphs), "links": links}
 
 
+LAZY_SRC_ATTRS = ["src", "data-src", "data-lazy-src", "data-original", "data-srcset"]
+
+
 def find_image_urls(soup, base_url):
     urls = set()
     for img in soup.find_all("img"):
-        src = img.get("src") or img.get("data-src")
-        if src:
-            urls.add(urljoin(base_url, src))
+        for attr in LAZY_SRC_ATTRS:
+            val = img.get(attr)
+            if val:
+                urls.add(urljoin(base_url, val))
         srcset = img.get("srcset")
         if srcset:
             for part in srcset.split(","):
                 candidate = part.strip().split(" ")[0]
                 if candidate:
                     urls.add(urljoin(base_url, candidate))
-    return {u for u in urls if IMAGE_EXT_RE.search(urlparse(u).path)}
+    for source in soup.find_all("source"):
+        srcset = source.get("srcset")
+        if srcset:
+            for part in srcset.split(","):
+                candidate = part.strip().split(" ")[0]
+                if candidate:
+                    urls.add(urljoin(base_url, candidate))
+    # Keep anything that looks like an image by extension, plus anything
+    # without a recognizable extension at all (common on CDN-hosted sites) -
+    # we sniff those by Content-Type when actually downloading.
+    return {
+        u for u in urls
+        if IMAGE_EXT_RE.search(urlparse(u).path) or "." not in os.path.basename(urlparse(u).path)
+    }
+
+
+CONTENT_TYPE_EXT = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/bmp": ".bmp",
+    "image/svg+xml": ".svg",
+}
 
 
 def download_images(image_urls, images_dir, session, delay, verbose=True):
@@ -116,18 +143,28 @@ def download_images(image_urls, images_dir, session, delay, verbose=True):
     used_names = set()
     saved = 0
     for url in sorted(image_urls):
-        name = os.path.basename(urlparse(url).path) or "image"
-        base, ext = os.path.splitext(name)
-        candidate = name
-        i = 1
-        while candidate in used_names:
-            candidate = f"{base}_{i}{ext}"
-            i += 1
-        used_names.add(candidate)
-        dest = os.path.join(images_dir, candidate)
         try:
             resp = session.get(url, timeout=20)
             resp.raise_for_status()
+            content_type = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
+            if not content_type.startswith("image/"):
+                if verbose:
+                    print(f"  skipped (not an image, {content_type or 'unknown type'}): {url}", file=sys.stderr)
+                continue
+
+            name = os.path.basename(urlparse(url).path) or "image"
+            base, ext = os.path.splitext(name)
+            if not ext:
+                ext = CONTENT_TYPE_EXT.get(content_type, ".jpg")
+                name = base + ext
+            candidate = name
+            i = 1
+            while candidate in used_names:
+                candidate = f"{base}_{i}{ext}"
+                i += 1
+            used_names.add(candidate)
+            dest = os.path.join(images_dir, candidate)
+
             with open(dest, "wb") as f:
                 f.write(resp.content)
             saved += 1
