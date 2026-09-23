@@ -30,6 +30,8 @@ PAGE_PARAM_CANDIDATES = ["p", "page", "pg", "pagenum", "page_num", "offset"]
 
 NEXT_LINK_TEXT = re.compile(r"^\s*(next|older|more|›|»|next\s*page)\s*$", re.I)
 
+IMAGE_EXT_RE = re.compile(r"\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$", re.I)
+
 
 def fetch(session, url, delay):
     resp = session.get(url, timeout=20)
@@ -94,6 +96,51 @@ def extract(soup, url, selector):
     return {"url": url, "title": title, "text": "\n\n".join(paragraphs), "links": links}
 
 
+def find_image_urls(soup, base_url):
+    urls = set()
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src")
+        if src:
+            urls.add(urljoin(base_url, src))
+        srcset = img.get("srcset")
+        if srcset:
+            for part in srcset.split(","):
+                candidate = part.strip().split(" ")[0]
+                if candidate:
+                    urls.add(urljoin(base_url, candidate))
+    return {u for u in urls if IMAGE_EXT_RE.search(urlparse(u).path)}
+
+
+def download_images(image_urls, images_dir, session, delay, verbose=True):
+    os.makedirs(images_dir, exist_ok=True)
+    used_names = set()
+    saved = 0
+    for url in sorted(image_urls):
+        name = os.path.basename(urlparse(url).path) or "image"
+        base, ext = os.path.splitext(name)
+        candidate = name
+        i = 1
+        while candidate in used_names:
+            candidate = f"{base}_{i}{ext}"
+            i += 1
+        used_names.add(candidate)
+        dest = os.path.join(images_dir, candidate)
+        try:
+            resp = session.get(url, timeout=20)
+            resp.raise_for_status()
+            with open(dest, "wb") as f:
+                f.write(resp.content)
+            saved += 1
+            if verbose:
+                print(f"  image: {url} -> {candidate}", file=sys.stderr)
+        except requests.RequestException as e:
+            if verbose:
+                print(f"  skipped image {url}: {e}", file=sys.stderr)
+        if delay:
+            time.sleep(delay)
+    return saved
+
+
 def default_output_path(start_url, fmt):
     """~/Downloads/scrapes/<site>_<timestamp>/output.<fmt>, created fresh each run."""
     domain = urlparse(start_url).netloc.replace(":", "_") or "site"
@@ -110,12 +157,13 @@ def parse_page_range(spec):
     return 1, int(spec)
 
 
-def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, out=None, fmt="json", verbose=True):
+def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, out=None, fmt="json", verbose=True, images=False, images_dir=None):
     session = requests.Session()
     session.headers.update({"User-Agent": USER_AGENT})
 
     results = []
     seen = set()
+    image_urls = set()
 
     param, current = find_page_param(start_url)
 
@@ -148,6 +196,8 @@ def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, o
                 # auto-detected range: stop once a page comes back empty
                 break
             results.append(data)
+            if images:
+                image_urls |= find_image_urls(soup, page_url)
     else:
         # Auto-follow "next page" links found in the HTML itself.
         url = start_url
@@ -165,6 +215,8 @@ def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, o
                 break
             soup = BeautifulSoup(html, "lxml")
             results.append(extract(soup, url, selector))
+            if images:
+                image_urls |= find_image_urls(soup, url)
             next_url = find_next_link(soup, url)
             if not next_url or next_url == url:
                 break
@@ -172,6 +224,13 @@ def scrape(start_url, selector=None, page_range=None, max_pages=50, delay=0.5, o
 
     if out:
         write_output(results, out, fmt)
+
+    if images and image_urls:
+        target = images_dir or os.path.join(os.path.dirname(out) or ".", "images")
+        saved = download_images(image_urls, target, session, delay, verbose)
+        if verbose:
+            print(f"Saved {saved} image(s) -> {target}", file=sys.stderr)
+
     return results
 
 
@@ -211,6 +270,7 @@ def main():
     parser.add_argument("--out", default=None, help="Output file path (default: a new folder under ~/Downloads/scrapes)")
     parser.add_argument("--format", choices=["json", "csv", "txt"], default="json", help="Output format, used for the auto-generated filename (default json)")
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
+    parser.add_argument("--images", action="store_true", help="Also download every image (jpg/png/gif/webp) found into an 'images' subfolder next to the output")
     args = parser.parse_args()
 
     if args.out:
@@ -233,6 +293,7 @@ def main():
         out=out,
         fmt=fmt,
         verbose=not args.quiet,
+        images=args.images,
     )
 
     if not args.quiet:

@@ -45,6 +45,7 @@ You can also force an explicit range with `--pages 1-20`.
 | `--out FILE` | Output file path, overrides the default `~/Downloads/scrapes/...` folder |
 | `--format json\|csv\|txt` | Output format (default json; inferred from `--out` extension if you set one) |
 | `--quiet` | Suppress progress logging |
+| `--images` | Also download every image (jpg/png/gif/webp) found across all pages into an `images/` subfolder next to the output |
 
 ### Examples
 
